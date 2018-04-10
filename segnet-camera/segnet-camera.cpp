@@ -20,7 +20,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include "gstCamera.h"
+#include "gstPipeline.h"
 
 #include "glDisplay.h"
 #include "glTexture.h"
@@ -36,7 +36,7 @@
 #include "segNet.h"
 
 
-#define DEFAULT_CAMERA -1	// -1 for onboard camera, or change to index of /dev/video V4L2 camera (>=0)	
+#define DEFAULT_pipeline -1	// -1 for onboard pipeline, or change to index of /dev/video V4L2 pipeline (>=0)
 		
 
 bool signal_recieved = false;
@@ -53,7 +53,7 @@ void sig_handler(int signo)
 
 int main( int argc, char** argv )
 {
-	printf("segnet-camera\n  args (%i):  ", argc);
+    printf("segnet-pipeline\n  args (%i):  ", argc);
 
 	for( int i=0; i < argc; i++ )
 		printf("%i [%s]  ", i, argv[i]);
@@ -66,20 +66,26 @@ int main( int argc, char** argv )
 
 
 	/*
-	 * create the camera device
+     * create the pipeline device
 	 */
-	gstCamera* camera = gstCamera::Create(DEFAULT_CAMERA);
+    std::ostringstream ss;
+    ss << "rtspsrc location=rtsp://root:root@192.168.1.90/axis-media/media.amp?resolution=1280x720  drop-on-latency=0 latency=100 ! ";
+    ss << "queue max-size-buffers=200 max-size-time=1000000000  max-size-bytes=10485760 min-threshold-time=10 ! ";
+    ss << "rtph264depay ! h264parse ! omxh264dec ! ";
+    ss << "nvvidconv flip-method=2 ! video/x-raw, format=NV12 ! ";
+    ss << "appsink name=mysink";
+    gstPipeline* pipeline = gstPipeline::Create(ss.str(), 1280, 720, 12 );
 	
-	if( !camera )
+    if( !pipeline )
 	{
-		printf("\nsegnet-camera:  failed to initialize video device\n");
+        printf("\nsegnet-pipeline:  failed to initialize video device\n");
 		return 0;
 	}
 	
-	printf("\nsegnet-camera:  successfully initialized video device\n");
-	printf("    width:  %u\n", camera->GetWidth());
-	printf("   height:  %u\n", camera->GetHeight());
-	printf("    depth:  %u (bpp)\n\n", camera->GetPixelDepth());
+    printf("\nsegnet-pipeline:  successfully initialized video device\n");
+    printf("    width:  %u\n", pipeline->GetWidth());
+    printf("   height:  %u\n", pipeline->GetHeight());
+    printf("    depth:  %u (bpp)\n\n", pipeline->GetPixelDepth());
 	
 
 	/*
@@ -89,7 +95,7 @@ int main( int argc, char** argv )
 	
 	if( !net )
 	{
-		printf("segnet-camera:   failed to initialize imageNet\n");
+        printf("segnet-pipeline:   failed to initialize imageNet\n");
 		return 0;
 	}
 
@@ -100,9 +106,9 @@ int main( int argc, char** argv )
 	float* outCPU  = NULL;
 	float* outCUDA = NULL;
 
-	if( !cudaAllocMapped((void**)&outCPU, (void**)&outCUDA, camera->GetWidth() * camera->GetHeight() * sizeof(float) * 4) )
+    if( !cudaAllocMapped((void**)&outCPU, (void**)&outCUDA, pipeline->GetWidth() * pipeline->GetHeight() * sizeof(float) * 4) )
 	{
-		printf("segnet-camera:  failed to allocate CUDA memory for output image (%ux%u)\n", camera->GetWidth(), camera->GetHeight());
+        printf("segnet-pipeline:  failed to allocate CUDA memory for output image (%ux%u)\n", pipeline->GetWidth(), pipeline->GetHeight());
 		return 0;
 	}
 
@@ -114,27 +120,27 @@ int main( int argc, char** argv )
 	glTexture* texture = NULL;
 	
 	if( !display ) {
-		printf("\nsegnet-camera:  failed to create openGL display\n");
+        printf("\nsegnet-pipeline:  failed to create openGL display\n");
 	}
 	else
 	{
-		texture = glTexture::Create(camera->GetWidth(), camera->GetHeight(), GL_RGBA32F_ARB/*GL_RGBA8*/);
+        texture = glTexture::Create(pipeline->GetWidth(), pipeline->GetHeight(), GL_RGBA32F_ARB/*GL_RGBA8*/);
 
 		if( !texture )
-			printf("segnet-camera:  failed to create openGL texture\n");
+            printf("segnet-pipeline:  failed to create openGL texture\n");
 	}
 	
 
 	/*
 	 * start streaming
 	 */
-	if( !camera->Open() )
+    if( !pipeline->Open() )
 	{
-		printf("\nsegnet-camera:  failed to open camera for streaming\n");
+        printf("\nsegnet-pipeline:  failed to open pipeline for streaming\n");
 		return 0;
 	}
 	
-	printf("\nsegnet-camera:  camera open for streaming\n");
+    printf("\nsegnet-pipeline:  pipeline open for streaming\n");
 	
 	
 	/*
@@ -148,17 +154,17 @@ int main( int argc, char** argv )
 		void* imgCUDA = NULL;
 		
 		// get the latest frame
-		if( !camera->Capture(&imgCPU, &imgCUDA, 1000) )
-			printf("\nsegnet-camera:  failed to capture frame\n");
+        if( !pipeline->Capture(&imgCPU, &imgCUDA, 1000) )
+            printf("\nsegnet-pipeline:  failed to capture frame\n");
 
 		// convert from YUV to RGBA
 		void* imgRGBA = NULL;
 		
-		if( !camera->ConvertRGBA(imgCUDA, &imgRGBA, true) )
-			printf("segnet-camera:  failed to convert from NV12 to RGBA\n");
+        if( !pipeline->ConvertRGBA(imgCUDA, &imgRGBA) )
+            printf("segnet-pipeline:  failed to convert from NV12 to RGBA\n");
 
 		// process image overlay
-		if( !net->Overlay((float*)imgRGBA, (float*)outCUDA, camera->GetWidth(), camera->GetHeight()) )
+        if( !net->Overlay((float*)imgRGBA, (float*)outCUDA, pipeline->GetWidth(), pipeline->GetHeight()) )
 		{
 			printf("segnet-console:  failed to process segmentation overlay.\n");
 			continue;
@@ -181,7 +187,7 @@ int main( int argc, char** argv )
 				// rescale image pixel intensities for display
 				CUDA(cudaNormalizeRGBA((float4*)outCUDA, make_float2(0.0f, 255.0f), 
 								   (float4*)outCUDA, make_float2(0.0f, 1.0f), 
-		 						   camera->GetWidth(), camera->GetHeight()));
+                                   pipeline->GetWidth(), pipeline->GetHeight()));
 
 				// map from CUDA to openGL using GL interop
 				void* tex_map = texture->MapCUDA();
@@ -200,16 +206,16 @@ int main( int argc, char** argv )
 		}
 	}
 	
-	printf("\nsegnet-camera:  un-initializing video device\n");
+    printf("\nsegnet-pipeline:  un-initializing video device\n");
 	
 	
 	/*
-	 * shutdown the camera device
+     * shutdown the pipeline device
 	 */
-	if( camera != NULL )
+    if( pipeline != NULL )
 	{
-		delete camera;
-		camera = NULL;
+        delete pipeline;
+        pipeline = NULL;
 	}
 
 	if( display != NULL )
@@ -218,8 +224,8 @@ int main( int argc, char** argv )
 		display = NULL;
 	}
 	
-	printf("segnet-camera:  video device has been un-initialized.\n");
-	printf("segnet-camera:  this concludes the use of the device.\n");
+    printf("segnet-pipeline:  video device has been un-initialized.\n");
+    printf("segnet-pipeline:  this concludes the use of the device.\n");
 	return 0;
 }
 

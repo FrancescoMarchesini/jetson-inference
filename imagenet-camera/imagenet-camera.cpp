@@ -20,8 +20,8 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include "gstCamera.h"
-
+//#include "gstpipeline.h"
+#include "gstPipeline.h"
 #include "glDisplay.h"
 #include "glTexture.h"
 
@@ -34,7 +34,8 @@
 #include "imageNet.h"
 
 
-#define DEFAULT_CAMERA -1	// -1 for onboard camera, or change to index of /dev/video V4L2 camera (>=0)	
+
+#define DEFAULT_pipeline -1	// -1 for onboard pipeline, or change to index of /dev/video V4L2 pipeline (>=0)
 		
 		
 		
@@ -52,7 +53,7 @@ void sig_handler(int signo)
 
 int main( int argc, char** argv )
 {
-	printf("imagenet-camera\n  args (%i):  ", argc);
+    printf("imagenet-pipeline\n  args (%i):  ", argc);
 
 	for( int i=0; i < argc; i++ )
 		printf("%i [%s]  ", i, argv[i]);
@@ -68,20 +69,40 @@ int main( int argc, char** argv )
 
 
 	/*
-	 * create the camera device
+     * create the pipeline device
 	 */
-	gstCamera* camera = gstCamera::Create(DEFAULT_CAMERA);
+   /* std::ostringstream ss;
+    ss << "rtspsrc location=rtsp://root:root@192.168.1.90/axis-media/media.amp?resolution=1280x720  drop-on-latency=0 latency=100 ! ";
+    ss << "queue max-size-buffers=200 max-size-time=1000000000  max-size-bytes=10485760 min-threshold-time=10 ! ";
+    ss << "rtph264depay ! h264parse ! omxh264dec ! video/x-raw, format=(string)NV12 ! ";
+    //ss << "nvvidconv flip-method=2 ! video/x-raw(memory:NVMM), width=(int)1920, height=(int)720, format=RGB ! ";
+    ss << "appsink name=mysink";
+    GstPipeline* pipeline = GstPipeline::Create(ss, 1920, 720, 12);
+*/
+
+   std::ostringstream ss;
+   ss << "rtspsrc location=rtsp://root:root@192.168.1.90/axis-media/media.amp?resolution=1280x720  drop-on-latency=0 latency=100 ! ";
+   ss << "queue max-size-buffers=200 max-size-time=1000000000  max-size-bytes=10485760 min-threshold-time=10 ! ";
+   ss << "rtph264depay ! h264parse ! omxh264dec ! ";
+  // ss << "nvvidconv flip-method=2 ! video/x-raw(memory:NVMM), width=(int)1920, height=(int)720, format=NV12 ! ";
+   //ss << "nvvidconv flip-method=2 ! ";
+   ss << "appsink name=mysink";
+
+  // ss << "queue ! rtph264depay ! queue ! h264parse ! queue ! omxh264dec ! nvvidconv ! video/x-raw, format=NV12 ! queue ! appsink name=mysink";
+
+   gstPipeline* pipeline = gstPipeline::Create(ss.str(), 1280, 720, 12 );
+    //gstpipeline* pipeline = gstpipeline::Create(DEFAULT_pipeline);
 	
-	if( !camera )
+    if( !pipeline )
 	{
-		printf("\nimagenet-camera:  failed to initialize video device\n");
+        printf("\nimagenet-pipeline:  failed to initialize video device\n");
 		return 0;
 	}
 	
-	printf("\nimagenet-camera:  successfully initialized video device\n");
-	printf("    width:  %u\n", camera->GetWidth());
-	printf("   height:  %u\n", camera->GetHeight());
-	printf("    depth:  %u (bpp)\n\n", camera->GetPixelDepth());
+    printf("\nimagenet-pipeline:  successfully initialized video device\n");
+    printf("    width:  %u\n", pipeline->GetWidth());
+    printf("   height:  %u\n", pipeline->GetHeight());
+    printf("    depth:  %u (bpp)\n\n", pipeline->GetPixelDepth());
 	
 
 	/*
@@ -103,14 +124,14 @@ int main( int argc, char** argv )
 	glTexture* texture = NULL;
 	
 	if( !display ) {
-		printf("\nimagenet-camera:  failed to create openGL display\n");
+        printf("\nimagenet-pipeline:  failed to create openGL display\n");
 	}
 	else
 	{
-		texture = glTexture::Create(camera->GetWidth(), camera->GetHeight(), GL_RGBA32F_ARB/*GL_RGBA8*/);
+        texture = glTexture::Create(pipeline->GetWidth(), pipeline->GetHeight(), GL_RGBA32F_ARB/*GL_RGBA8*/);
 
 		if( !texture )
-			printf("imagenet-camera:  failed to create openGL texture\n");
+            printf("imagenet-pipeline:  failed to create openGL texture\n");
 	}
 	
 	
@@ -123,13 +144,13 @@ int main( int argc, char** argv )
 	/*
 	 * start streaming
 	 */
-	if( !camera->Open() )
+    if( !pipeline->Open() )
 	{
-		printf("\nimagenet-camera:  failed to open camera for streaming\n");
+        printf("\nimagenet-pipeline:  failed to open pipeline for streaming\n");
 		return 0;
 	}
 	
-	printf("\nimagenet-camera:  camera open for streaming\n");
+    printf("\nimagenet-pipeline:  pipeline open for streaming\n");
 	
 	
 	/*
@@ -143,30 +164,30 @@ int main( int argc, char** argv )
 		void* imgCUDA = NULL;
 		
 		// get the latest frame
-		if( !camera->Capture(&imgCPU, &imgCUDA, 1000) )
-			printf("\nimagenet-camera:  failed to capture frame\n");
+        if( !pipeline->Capture(&imgCPU, &imgCUDA, 1000) )
+            printf("\nimagenet-pipeline:  failed to capture frame\n");
 		//else
-		//	printf("imagenet-camera:  recieved new frame  CPU=0x%p  GPU=0x%p\n", imgCPU, imgCUDA);
+        //	printf("imagenet-pipeline:  recieved new frame  CPU=0x%p  GPU=0x%p\n", imgCPU, imgCUDA);
 		
 		// convert from YUV to RGBA
 		void* imgRGBA = NULL;
 		
-		if( !camera->ConvertRGBA(imgCUDA, &imgRGBA) )
-			printf("imagenet-camera:  failed to convert from NV12 to RGBA\n");
+        if( !pipeline->ConvertRGBA(imgCUDA, &imgRGBA) )
+            printf("imagenet-pipeline:  failed to convert from NV12 to RGBA\n");
 
 		// classify image
-		const int img_class = net->Classify((float*)imgRGBA, camera->GetWidth(), camera->GetHeight(), &confidence);
+        const int img_class = net->Classify((float*)imgRGBA, pipeline->GetWidth(), pipeline->GetHeight(), &confidence);
 	
 		if( img_class >= 0 )
 		{
-			printf("imagenet-camera:  %2.5f%% class #%i (%s)\n", confidence * 100.0f, img_class, net->GetClassDesc(img_class));	
+            printf("imagenet-pipeline:  %2.5f%% class #%i (%s)\n", confidence * 100.0f, img_class, net->GetClassDesc(img_class));
 
 			if( font != NULL )
 			{
 				char str[256];
 				sprintf(str, "%05.2f%% %s", confidence * 100.0f, net->GetClassDesc(img_class));
 	
-				font->RenderOverlay((float4*)imgRGBA, (float4*)imgRGBA, camera->GetWidth(), camera->GetHeight(),
+                font->RenderOverlay((float4*)imgRGBA, (float4*)imgRGBA, pipeline->GetWidth(), pipeline->GetHeight(),
 								    str, 0, 0, make_float4(255.0f, 255.0f, 255.0f, 255.0f));
 			}
 			
@@ -191,7 +212,7 @@ int main( int argc, char** argv )
 				// rescale image pixel intensities for display
 				CUDA(cudaNormalizeRGBA((float4*)imgRGBA, make_float2(0.0f, 255.0f), 
 								   (float4*)imgRGBA, make_float2(0.0f, 1.0f), 
-		 						   camera->GetWidth(), camera->GetHeight()));
+                                   pipeline->GetWidth(), pipeline->GetHeight()));
 
 				// map from CUDA to openGL using GL interop
 				void* tex_map = texture->MapCUDA();
@@ -210,16 +231,16 @@ int main( int argc, char** argv )
 		}
 	}
 	
-	printf("\nimagenet-camera:  un-initializing video device\n");
+    printf("\nimagenet-pipeline:  un-initializing video device\n");
 	
 	
 	/*
-	 * shutdown the camera device
+     * shutdown the pipeline device
 	 */
-	if( camera != NULL )
+    if( pipeline != NULL )
 	{
-		delete camera;
-		camera = NULL;
+        delete pipeline;
+        pipeline = NULL;
 	}
 
 	if( display != NULL )
@@ -228,8 +249,8 @@ int main( int argc, char** argv )
 		display = NULL;
 	}
 	
-	printf("imagenet-camera:  video device has been un-initialized.\n");
-	printf("imagenet-camera:  this concludes the test of the video device.\n");
+    printf("imagenet-pipeline:  video device has been un-initialized.\n");
+    printf("imagenet-pipeline:  this concludes the test of the video device.\n");
 	return 0;
 }
 

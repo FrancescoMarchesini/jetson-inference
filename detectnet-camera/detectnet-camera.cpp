@@ -1,26 +1,9 @@
 /*
- * Copyright (c) 2017, NVIDIA CORPORATION. All rights reserved.
- *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * http://github.com/dusty-nv/jetson-inference
  */
 
-#include "gstCamera.h"
+//#include "gstCamera.h"
+#include "gstPipeline.h"
 
 #include "glDisplay.h"
 #include "glTexture.h"
@@ -83,18 +66,34 @@ int main( int argc, char** argv )
 	/*
 	 * create the camera device
 	 */
-	gstCamera* camera = gstCamera::Create(DEFAULT_CAMERA);
-	
-	if( !camera )
+    std::ostringstream ss;
+    ss << "rtspsrc location=rtsp://root:root@192.168.1.90/axis-media/media.amp?resolution=1280x720  drop-on-latency=0 latency=100 ! ";
+    ss << "queue max-size-buffers=200 max-size-time=1000000000  max-size-bytes=10485760 min-threshold-time=10 ! ";
+    ss << "rtph264depay ! h264parse ! omxh264dec ! ";
+   // ss << "nvvidconv flip-method=2 ! video/x-raw(memory:NVMM), width=(int)1920, height=(int)720, format=NV12 ! ";
+    ss << "nvvidconv flip-method=2 ! video/x-raw, format=NV12 ! ";
+    ss << "appsink name=mysink";
+
+   // ss << "queue ! rtph264depay ! queue ! h264parse ! queue ! omxh264dec ! nvvidconv ! video/x-raw, format=NV12 ! queue ! appsink name=mysink";
+
+    gstPipeline* pipeline = gstPipeline::Create( ss.str(), 1280, 720, 12 );
+    //gstPipeline* pipeline = gstPipeline::Create( "rtspsrc location=rtsp://wowzaec2demo.streamlock.net/vod/mp4:BigBuckBunny_115k.mov ! queue ! rtph264depay ! h264parse ! queue ! omxh264dec ! appsink name=mysink", 240, 160, 12);
+
+    std::string  mLaunchStr;
+    mLaunchStr = ss.str();
+    printf("gstreamer decoder pipeline string:\n");
+    printf("%s\n", mLaunchStr.c_str());
+
+    if( !pipeline )
 	{
 		printf("\ndetectnet-camera:  failed to initialize video device\n");
 		return 0;
 	}
 	
 	printf("\ndetectnet-camera:  successfully initialized video device\n");
-	printf("    width:  %u\n", camera->GetWidth());
-	printf("   height:  %u\n", camera->GetHeight());
-	printf("    depth:  %u (bpp)\n\n", camera->GetPixelDepth());
+    printf("    width:  %u\n", pipeline->GetWidth());
+    printf("   height:  %u\n", pipeline->GetHeight());
+    printf("    depth:  %u (bpp)\n\n", pipeline->GetPixelDepth());
 	
 
 	/*
@@ -139,7 +138,7 @@ int main( int argc, char** argv )
 	}
 	else
 	{
-		texture = glTexture::Create(camera->GetWidth(), camera->GetHeight(), GL_RGBA32F_ARB/*GL_RGBA8*/);
+        texture = glTexture::Create(pipeline->GetWidth(), pipeline->GetHeight(), GL_RGBA32F_ARB/*GL_RGBA8*/);
 
 		if( !texture )
 			printf("detectnet-camera:  failed to create openGL texture\n");
@@ -155,7 +154,7 @@ int main( int argc, char** argv )
 	/*
 	 * start streaming
 	 */
-	if( !camera->Open() )
+    if( !pipeline->Open() )
 	{
 		printf("\ndetectnet-camera:  failed to open camera for streaming\n");
 		return 0;
@@ -175,19 +174,19 @@ int main( int argc, char** argv )
 		void* imgCUDA = NULL;
 		
 		// get the latest frame
-		if( !camera->Capture(&imgCPU, &imgCUDA, 1000) )
+        if( !pipeline->Capture(&imgCPU, &imgCUDA, 1000) )
 			printf("\ndetectnet-camera:  failed to capture frame\n");
 
 		// convert from YUV to RGBA
 		void* imgRGBA = NULL;
 		
-		if( !camera->ConvertRGBA(imgCUDA, &imgRGBA) )
-			printf("detectnet-camera:  failed to convert from NV12 to RGBA\n");
+        if( !pipeline->ConvertRGBA(imgCUDA, &imgRGBA) )
+            printf("detectnet-pipeline:  failed to convert from NV12 to RGBA\n");
 
 		// classify image with detectNet
 		int numBoundingBoxes = maxBoxes;
 	
-		if( net->Detect((float*)imgRGBA, camera->GetWidth(), camera->GetHeight(), bbCPU, &numBoundingBoxes, confCPU))
+        if( net->Detect((float*)imgRGBA, pipeline->GetWidth(), pipeline->GetHeight(), bbCPU, &numBoundingBoxes, confCPU))
 		{
 			printf("%i bounding boxes detected\n", numBoundingBoxes);
 		
@@ -203,7 +202,7 @@ int main( int argc, char** argv )
 				
 				if( nc != lastClass || n == (numBoundingBoxes - 1) )
 				{
-					if( !net->DrawBoxes((float*)imgRGBA, (float*)imgRGBA, camera->GetWidth(), camera->GetHeight(), 
+                    if( !net->DrawBoxes((float*)imgRGBA, (float*)imgRGBA, pipeline->GetWidth(), pipeline->GetHeight(),
 						                        bbCUDA + (lastStart * 4), (n - lastStart) + 1, lastClass) )
 						printf("detectnet-console:  failed to draw boxes\n");
 						
@@ -244,7 +243,7 @@ int main( int argc, char** argv )
 				// rescale image pixel intensities for display
 				CUDA(cudaNormalizeRGBA((float4*)imgRGBA, make_float2(0.0f, 255.0f), 
 								   (float4*)imgRGBA, make_float2(0.0f, 1.0f), 
-		 						   camera->GetWidth(), camera->GetHeight()));
+                                   pipeline->GetWidth(), pipeline->GetHeight()));
 
 				// map from CUDA to openGL using GL interop
 				void* tex_map = texture->MapCUDA();
@@ -269,16 +268,16 @@ int main( int argc, char** argv )
 	/*
 	 * shutdown the camera device
 	 */
-	if( camera != NULL )
+    if( pipeline!= NULL )
 	{
-		delete camera;
-		camera = NULL;
+        delete pipeline;
+        pipeline = NULL;
 	}
 
 	if( display != NULL )
 	{
 		delete display;
-		display = NULL;
+        pipeline = NULL;
 	}
 	
 	printf("detectnet-camera:  video device has been un-initialized.\n");
