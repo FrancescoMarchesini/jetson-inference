@@ -66,33 +66,23 @@ int main( int argc, char** argv )
 	 */
 	if( signal(SIGINT, sig_handler) == SIG_ERR )
 		printf("\ncan't catch SIGINT\n");
+    /*
+     * create the camera device
+     */
+    std::ostringstream ss;
+    uint32_t w, h;
+    std::stringstream ssw(argv[3]);
+    std::stringstream ssh(argv[4]);
+    ssw >> w;
+    ssh >> h;
 
-
-	/*
-     * create the pipeline device
-	 */
-   /* std::ostringstream ss;
-    ss << "rtspsrc location=rtsp://root:root@192.168.1.90/axis-media/media.amp?resolution=1280x720  drop-on-latency=0 latency=100 ! ";
+    ss << "rtspsrc location=rtsp://"<<argv[2]<<"/axis-media/media.amp?resolution="<<argv[3]<<"x"<<argv[4]<<"  drop-on-latency=1 latency=10 ! ";
     ss << "queue max-size-buffers=200 max-size-time=1000000000  max-size-bytes=10485760 min-threshold-time=10 ! ";
-    ss << "rtph264depay ! h264parse ! omxh264dec ! video/x-raw, format=(string)NV12 ! ";
-    //ss << "nvvidconv flip-method=2 ! video/x-raw(memory:NVMM), width=(int)1920, height=(int)720, format=RGB ! ";
+    ss << "rtph264depay ! h264parse ! omxh264dec ! ";
+    ss << "video/x-raw, width=(int)"<< w <<", height=(int)"<< h <<", format=(string)NV12 ! ";
     ss << "appsink name=mysink";
-    GstPipeline* pipeline = GstPipeline::Create(ss, 1920, 720, 12);
-*/
 
-   std::ostringstream ss;
-   ss << "rtspsrc location=rtsp://root:root@192.168.1.90/axis-media/media.amp?resolution=1280x720  drop-on-latency=0 latency=100 ! ";
-   ss << "queue max-size-buffers=200 max-size-time=1000000000  max-size-bytes=10485760 min-threshold-time=10 ! ";
-   ss << "rtph264depay ! h264parse ! omxh264dec ! ";
-  // ss << "nvvidconv flip-method=2 ! video/x-raw(memory:NVMM), width=(int)1920, height=(int)720, format=NV12 ! ";
-   //ss << "nvvidconv flip-method=2 ! ";
-   ss << "appsink name=mysink";
-
-  // ss << "queue ! rtph264depay ! queue ! h264parse ! queue ! omxh264dec ! nvvidconv ! video/x-raw, format=NV12 ! queue ! appsink name=mysink";
-
-   gstPipeline* pipeline = gstPipeline::Create(ss.str(), 1280, 720, 12 );
-    //gstpipeline* pipeline = gstpipeline::Create(DEFAULT_pipeline);
-	
+    gstPipeline* pipeline = gstPipeline::Create( ss.str(), w, h, 12 );
     if( !pipeline )
 	{
         printf("\nimagenet-pipeline:  failed to initialize video device\n");

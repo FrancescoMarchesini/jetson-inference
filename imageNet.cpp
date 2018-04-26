@@ -164,7 +164,7 @@ imageNet* imageNet::Create( int argc, char** argv )
 
 	const char* modelName = cmdLine.GetString("model");
 
-	if( !modelName )
+/*	if( !modelName )
 	{
 		if( argc == 2 )
 			modelName = argv[1];
@@ -173,9 +173,9 @@ imageNet* imageNet::Create( int argc, char** argv )
 		else
 			modelName = "googlenet";
 	}
-
-	//if( argc > 3 )
-	//	modelName = argv[3];	
+*/
+    if( argc > 3 )
+        modelName = argv[1];
 
 	imageNet::NetworkType type = imageNet::GOOGLENET;
 

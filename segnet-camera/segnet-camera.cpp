@@ -69,13 +69,19 @@ int main( int argc, char** argv )
      * create the pipeline device
 	 */
     std::ostringstream ss;
-    ss << "rtspsrc location=rtsp://root:root@192.168.1.90/axis-media/media.amp?resolution=1280x720  drop-on-latency=0 latency=100 ! ";
+    uint32_t w, h;
+    std::stringstream ssw(argv[3]);
+    std::stringstream ssh(argv[4]);
+    ssw >> w;
+    ssh >> h;
+
+    ss << "rtspsrc location=rtsp://"<<argv[2]<<"/axis-media/media.amp?resolution="<<argv[3]<<"x"<<argv[4]<<"  drop-on-latency=1 latency=10 ! ";
     ss << "queue max-size-buffers=200 max-size-time=1000000000  max-size-bytes=10485760 min-threshold-time=10 ! ";
     ss << "rtph264depay ! h264parse ! omxh264dec ! ";
-    ss << "nvvidconv flip-method=2 ! video/x-raw, format=NV12 ! ";
+    ss << "video/x-raw, width=(int)"<< w <<", height=(int)"<< h <<", format=(string)NV12 ! ";
     ss << "appsink name=mysink";
-    gstPipeline* pipeline = gstPipeline::Create(ss.str(), 1280, 720, 12 );
-	
+
+     gstPipeline* pipeline = gstPipeline::Create( ss.str(), w, h, 12 );
     if( !pipeline )
 	{
         printf("\nsegnet-pipeline:  failed to initialize video device\n");
@@ -163,13 +169,13 @@ int main( int argc, char** argv )
         if( !pipeline->ConvertRGBA(imgCUDA, &imgRGBA) )
             printf("segnet-pipeline:  failed to convert from NV12 to RGBA\n");
 
-		// process image overlay
-        if( !net->Overlay((float*)imgRGBA, (float*)outCUDA, pipeline->GetWidth(), pipeline->GetHeight()) )
+        // process image
+        if( !net->Overlay((float*)imgRGBA, (float*)outCUDA, pipeline->GetWidth(), pipeline->GetHeight()))
 		{
 			printf("segnet-console:  failed to process segmentation overlay.\n");
 			continue;
 		}
-		
+
 		// update display
 		if( display != NULL )
 		{
@@ -203,7 +209,7 @@ int main( int argc, char** argv )
 			}
 
 			display->EndRender();
-		}
+        }
 	}
 	
     printf("\nsegnet-pipeline:  un-initializing video device\n");

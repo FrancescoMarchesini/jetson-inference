@@ -84,7 +84,7 @@ segNet* segNet::Create( int argc, char** argv )
 		modelName = "fcn-alexnet-cityscapes-hd";
 
 		if( argc > 3 )
-			modelName = argv[3];	
+            modelName = argv[1];
 
 		segNet::NetworkType type = segNet::SEGNET_CUSTOM;
 
@@ -96,16 +96,16 @@ segNet* segNet::Create( int argc, char** argv )
 			type = segNet::FCN_ALEXNET_PASCAL_VOC;
 		else if( strcasecmp(modelName, "fcn-alexnet-synthia-cvpr16") == 0 )
 			type = segNet::FCN_ALEXNET_SYNTHIA_CVPR16;
-		else if( strcasecmp(modelName, "fcn-alexnet-synthia-summer-sd") == 0 || strcasecmp(modelName, "fcn-alexnet-synthia-summer") == 0)
+        else if( strcasecmp(modelName, "fcn-alexnet-synthia-summer-sd") == 0 || strcasecmp(modelName, "fcn-alexnet-synthia-summer") == 0)
 			type = segNet::FCN_ALEXNET_SYNTHIA_SUMMER_SD;
 		else if( strcasecmp(modelName, "fcn-alexnet-synthia-summer-hd") == 0 )
 			type = segNet::FCN_ALEXNET_SYNTHIA_SUMMER_HD;
 		else if( strcasecmp(modelName, "fcn-alexnet-aerial-fpv-720p") == 0 )
 			type = segNet::FCN_ALEXNET_AERIAL_FPV_720p;
-		/*else if( strcasecmp(modelName, "fcn-alexnet-aerial-fpv-720p-4ch") == 0 )
+        /*else if( strcasecmp(modelName, "fcn-alexnet-aerial-fpv-720p-4ch") == 0 )
 			type = segNet::FCN_ALEXNET_AERIAL_FPV_720p_4ch;
 		else if( strcasecmp(modelName, "fcn-alexnet-aerial-fpv-720p-21ch") == 0 )
-			type = segNet::FCN_ALEXNET_AERIAL_FPV_720p_21ch;*/
+            type = segNet::FCN_ALEXNET_AERIAL_FPV_720p_21ch;*/
 
 		// create segnet from pretrained model
 		return segNet::Create(type);
@@ -357,7 +357,7 @@ bool segNet::Overlay( float* rgba, float* output, uint32_t width, uint32_t heigh
 
 	
 	// process with GIE
-	void* inferenceBuffers[] = { mInputCUDA, mOutputs[0].CUDA };
+    void* inferenceBuffers[] = { mInputCUDA, mOutputs[0].CUDA };
 	
 	if( !mContext->execute(1, inferenceBuffers) )
 	{
@@ -383,8 +383,8 @@ bool segNet::Overlay( float* rgba, float* output, uint32_t width, uint32_t heigh
 	// if desired, find the ID of the class to ignore (typically void)
 	const int ignoreID = FindClassID(ignore_class);
 	
-	printf(LOG_GIE "segNet::Overlay -- s_w %i  s_h %i  s_c %i  s_x %f  s_y %f\n", s_w, s_h, s_c, s_x, s_y);
-	printf(LOG_GIE "segNet::Overlay -- ignoring class '%s' id=%i\n", ignore_class, ignoreID);
+    //printf(LOG_GIE "segNet::Overlay -- s_w %i  s_h %i  s_c %i  s_x %f  s_y %f\n", s_w, s_h, s_c, s_x, s_y);
+    //printf(LOG_GIE "segNet::Overlay -- ignoring class '%s' id=%i\n", ignore_class, ignoreID);
 
 
 	// find the argmax-classified class of each tile
@@ -429,7 +429,7 @@ bool segNet::Overlay( float* rgba, float* output, uint32_t width, uint32_t heigh
 			classMap[y * s_w + x] = argmax;
 		}
 	}
-	   
+
 	// overlay pixels onto original
 	for( uint32_t y=0; y < height; y++ )
 	{
@@ -473,12 +473,12 @@ bool segNet::Overlay( float* rgba, float* output, uint32_t width, uint32_t heigh
 			const float x1f = 1.0f - x1d;
 			const float y1f = 1.0f - y1d;
 
-			const float x2f = 1.0f - x1f;
-			const float y2f = 1.0f - y1f;
+            const float x2f = 1.0f - x1f;
+            const float y2f = 1.0f - y1f;
 
 			int c_index = 0;
 
-			/*if( y2d > y1d )
+            /*if( y2d > y1d )
 			{
 				if( x2d > y2d )			c_index = 2;
 				else 					c_index = 3;
@@ -487,26 +487,28 @@ bool segNet::Overlay( float* rgba, float* output, uint32_t width, uint32_t heigh
 			{
 				if( x2d > y2d )			c_index = 1;
 				else						c_index = 0;
-			}*/
+            }*/
 			
-			//float* c_color = GetClassColor(classIdx[c_index]);
+            //float* c_color = GetClassColor(classIdx[c_index]);
 			//printf("x %u y %u cx %f cy %f  x1d %f y1d %f  x2d %f y2d %f  c %i\n", x, y, cx, cy, x1d, y1d, x2d, y2d, c_index);
 
-			float c_color[] = { cc[0][0] * x1f * y1f + cc[1][0] * x2f * y1f + cc[2][0] * x2f * y2f + cc[3][0] * x1f * y2f,
+            float c_color[] = { cc[0][0] * x1f * y1f + cc[1][0] * x2f * y1f + cc[2][0] * x2f * y2f + cc[3][0] * x1f * y2f,
 						     cc[0][1] * x1f * y1f + cc[1][1] * x2f * y1f + cc[2][1] * x2f * y2f + cc[3][1] * x1f * y2f,
 						     cc[0][2] * x1f * y1f + cc[1][2] * x2f * y1f + cc[2][2] * x2f * y2f + cc[3][2] * x1f * y2f,
 						     cc[0][3] * x1f * y1f + cc[1][3] * x2f * y1f + cc[2][3] * x2f * y2f + cc[3][3] * x1f * y2f };
 
-			float* px_in  = rgba +   (((y * width * 4) + x * 4));
+            float* px_in  = rgba +   (((y * width * 4) + x * 4));
 			float* px_out = output + (((y * width * 4) + x * 4));
 
 			const float alph = c_color[3] / 255.0f;
 			const float inva = 1.0f - alph;
 
-			px_out[0] = alph * c_color[0] + inva * px_in[0];
-			px_out[1] = alph * c_color[1] + inva * px_in[1];
-			px_out[2] = alph * c_color[2] + inva * px_in[2];
+
+            px_out[0] = alph * c_color[0]  + inva; // * px_in[0];
+            px_out[1] = alph * c_color[1]  + inva; // * px_in[1];
+            px_out[2] = alph * c_color[2]  + inva; // * px_in[2];
 			px_out[3] = 255.0f;
+
 		}
 	}
 
